@@ -1,6 +1,4 @@
 # rinha-backend
-Architecture design
-
 
 # Payments Service
 
