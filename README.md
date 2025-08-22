@@ -6,76 +6,187 @@ Payment service
 Payment processor service
 <img width="1396" height="435" alt="image" src="https://github.com/user-attachments/assets/4edffce8-64f5-4724-9be3-750763b4c114" />
 
-This project uses Quarkus, the Supersonic Subatomic Java Framework.
+# Payments Service
 
-If you want to learn more about Quarkus, please visit its website: <https://quarkus.io/>.
+This project is a **payment processing service** built with **Java + Quarkus**, using **Kafka** for message-driven communication and a resilient **payment processor integration** strategy.
 
-## Running the application in dev mode
+---
 
-You can run your application in dev mode that enables live coding using:
+## 📌 Overview
 
-```shell script
-./mvnw quarkus:dev
+The service exposes REST endpoints to create and query payments. Payments are first **published to Kafka**, then asynchronously processed by a **payment processor service**. If the default processor fails, a **fallback processor** is used. If both fail, the payment is stored in the database with a **failed status**.
+
+---
+
+## ⚙️ Architecture
+
+### Flow:
+
+1. **API Request → PaymentController → PaymentsService**
+
+   * Receives a request to create a payment.
+   * Publishes the payment data to Kafka (`payments-out`).
+   * Returns `"OK"` immediately.
+
+2. **Message Processing → PaymentProcessorService**
+
+   * Listens to Kafka (`payments-in`).
+   * Converts the message payload into a `CreateExternalPaymentDto`.
+   * Attempts to process the payment using the **Default Processor**.
+   * If retries fail, it attempts the **Fallback Processor**.
+   * If all processors fail, the payment is stored with a **FAILED** status.
+
+3. **Database (PostgreSQL/MongoDB)**
+
+   * All processed payments are stored with details: correlationId, amount, processor type, status, and timestamp.
+
+---
+
+## 🏗️ Project Structure
+
+```
+org.jchaves.controller
+ └── PaymentController.java       # REST API controller
+
+org.jchaves.service
+ ├── PaymentsService.java         # Handles API requests, publishes Kafka messages
+ └── PaymentProcessorService.java # Consumes Kafka messages, processes payments
+
+org.jchaves.repository
+ └── PaymentRepository.java       # Data persistence
+
+org.jchaves.dto
+ ├── CreatePaymentDto.java        # DTO for creating payments
+ ├── CreateExternalPaymentDto.java # DTO for external processors
+ └── PaymentSummary.java          # Summary DTO for reports
+
+org.jchaves.constants
+ ├── PaymentProcessorEnum.java    # Processor types: DEFAULT, FALLBACK, NONE
+ └── PaymentStatus.java           # Payment status: SUCCESS, FAIL
 ```
 
-> **_NOTE:_**  Quarkus now ships with a Dev UI, which is available in dev mode only at <http://localhost:8080/q/dev/>.
+---
 
-## Packaging and running the application
+## 🚀 REST API Endpoints
 
-The application can be packaged using:
+### Create Payment
 
-```shell script
-./mvnw package
+```http
+POST /api/payments
+Content-Type: application/json
+
+{
+  "correlationId": "12345",
+  "amount": 100.50
+}
 ```
 
-It produces the `quarkus-run.jar` file in the `target/quarkus-app/` directory.
-Be aware that it’s not an _über-jar_ as the dependencies are copied into the `target/quarkus-app/lib/` directory.
+**Response:**
 
-The application is now runnable using `java -jar target/quarkus-app/quarkus-run.jar`.
-
-If you want to build an _über-jar_, execute the following command:
-
-```shell script
-./mvnw package -Dquarkus.package.jar.type=uber-jar
+```json
+"OK"
 ```
 
-The application, packaged as an _über-jar_, is now runnable using `java -jar target/*-runner.jar`.
+### Get Payment Summary
 
-## Creating a native executable
-
-You can create a native executable using:
-
-```shell script
-./mvnw package -Dnative
+```http
+GET /api/payments/summary?from=2025-01-01T00:00:00Z&to=2025-01-31T23:59:59Z
 ```
 
-Or, if you don't have GraalVM installed, you can run the native executable build in a container using:
+**Response:**
 
-```shell script
-./mvnw package -Dnative -Dquarkus.native.container-build=true
+```json
+{
+  "main": {
+    "count": 10,
+    "totalAmount": 2000.00
+  },
+  "fallback": {
+    "count": 2,
+    "totalAmount": 400.00
+  }
+}
 ```
 
-You can then execute your native executable with: `./target/rinha-backend-1.0.0-SNAPSHOT-runner`
+### List All Payments
 
-If you want to learn more about building native executables, please consult <https://quarkus.io/guides/maven-tooling>.
+```http
+GET /api/payments/all
+```
 
-## Related Guides
+Returns all stored payments.
 
-- REST ([guide](https://quarkus.io/guides/rest)): A Jakarta REST implementation utilizing build time processing and Vert.x. This extension is not compatible with the quarkus-resteasy extension, or any of the extensions that depend on it.
-- REST Jackson ([guide](https://quarkus.io/guides/rest#json-serialisation)): Jackson serialization support for Quarkus REST. This extension is not compatible with the quarkus-resteasy extension, or any of the extensions that depend on it
-- Messaging - Kafka Connector ([guide](https://quarkus.io/guides/kafka-getting-started)): Connect to Kafka with Reactive Messaging
+---
 
-## Provided Code
+## 📡 Kafka Integration
 
-### Messaging codestart
+* **Producer:**
 
-Use Quarkus Messaging
+  * Channel: `payments-out`
+  * Publishes `CreatePaymentDto` as JSON
 
-[Related Apache Kafka guide section...](https://quarkus.io/guides/kafka-reactive-getting-started)
+* **Consumer:**
 
+  * Channel: `payments-in`
+  * Consumes JSON payloads
 
-### REST
+---
 
-Easily start your REST Web Services
+## 🔄 Retry & Fallback Strategy
 
-[Related guide section...](https://quarkus.io/guides/getting-started-reactive#reactive-jax-rs-resources)
+* Default processor: retried **3 times**
+* If all retries fail → fallback processor is used
+* If fallback also fails → payment stored as **FAILED** with `NONE` processor type
+
+---
+
+## 🗄️ Database Entity
+
+```java
+public class Payment {
+    String id;
+    String correlationId;
+    BigDecimal amount;
+    PaymentStatus status;       // SUCCESS, FAIL
+    PaymentProcessorEnum processorType; // DEFAULT, FALLBACK, NONE
+    Instant createdAt;
+}
+```
+
+---
+
+## 📋 Example Logs
+
+```bash
+INFO  payload converted with success
+INFO  sending request to default payment processor
+INFO  PAYMENT CREATED IN DEFAULT PROCESSOR SUCCESSFULLY
+```
+
+If failures occur:
+
+```bash
+INFO  ERROR ON CREATE PAYMENT IN EXTERNAL SERVICE - RETRYING...
+INFO  RETRY NUMBER - 1 OF 3
+INFO  sending request to fallback payment processor
+INFO  PAYMENT CREATED IN FALLBACK PROCESSOR SUCCESSFULLY
+```
+
+---
+
+## ✅ Summary
+
+This service provides:
+
+* Kafka-based payment queuing and processing.
+* REST API endpoints to create and query payments.
+* Resilient processor handling with retries and fallbacks.
+* Persistent storage of all payment operations.
+* Query and reporting capabilities for payments.
+
+---
+
+## 🧑‍💻 Author
+
+Developed by **Joabe Chaves** ✨
+
