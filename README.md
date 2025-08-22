@@ -171,6 +171,47 @@ INFO  PAYMENT CREATED IN FALLBACK PROCESSOR SUCCESSFULLY
 
 ---
 
+## ▶️ Running the Application
+
+To run this service locally you will need external dependencies such as **Kafka** and a **database**. These are provided via **Docker Compose**.
+
+### 1. Start external services
+
+In the project root, run:
+
+```bash
+docker-compose up -d
+```
+
+This will start:
+
+* **Kafka** (for message broker)
+* **Zookeeper** (required by Kafka)
+* **Database** (e.g., PostgreSQL)
+* Any other external services defined in the `docker-compose.yml`
+
+### 2. Run the Quarkus application
+
+Once the containers are up, start the Quarkus application:
+
+```bash
+./mvnw quarkus:dev
+```
+
+The application will be available at:
+
+```
+http://localhost:8080
+```
+
+### 3. Verify the setup
+
+* Use `curl` or Postman to hit the **API endpoints**.
+* Check Kafka topics with your preferred tool to verify messages are being produced and consumed.
+
+---
+
+
 ## ✅ Summary
 
 This service provides:
