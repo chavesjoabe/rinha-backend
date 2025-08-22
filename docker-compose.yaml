@@ -1,0 +1,132 @@
+version: '3.8'
+
+services:
+  # --- Postgres for Quarkus app ---
+  quarkus-db:
+    image: postgres:17-alpine
+    container_name: quarkus-db
+    environment:
+      - POSTGRES_USER=admin
+      - POSTGRES_PASSWORD=admin
+      - POSTGRES_DB=payments
+    ports:
+      - "5432:5432" # expose on different host port to avoid conflicts
+    volumes:
+      - quarkus-db-data:/var/lib/postgresql/data
+    networks:
+      - quarkus-net
+  # --- Kafka stack ---
+  zookeeper:
+    image: confluentinc/cp-zookeeper:7.2.1
+    container_name: zookeeper
+    environment:
+      ZOOKEEPER_CLIENT_PORT: 2181
+    networks:
+      - kafka-net
+
+  kafka:
+    image: confluentinc/cp-kafka:7.2.1
+    container_name: kafka
+    depends_on:
+      - zookeeper
+    ports:
+      - "9092:9092"
+    environment:
+      KAFKA_BROKER_ID: 1
+      KAFKA_ZOOKEEPER_CONNECT: zookeeper:2181
+      KAFKA_ADVERTISED_LISTENERS: PLAINTEXT://localhost:9092,PLAINTEXT_INTERNAL://kafka:29092
+      KAFKA_LISTENER_SECURITY_PROTOCOL_MAP: PLAINTEXT:PLAINTEXT,PLAINTEXT_INTERNAL:PLAINTEXT
+      KAFKA_INTER_BROKER_LISTENER_NAME: PLAINTEXT_INTERNAL
+      KAFKA_LISTENERS: PLAINTEXT://0.0.0.0:9092,PLAINTEXT_INTERNAL://0.0.0.0:29092
+      KAFKA_OFFSETS_TOPIC_REPLICATION_FACTOR: 1
+    networks:
+      - kafka-net
+      - payment-processor
+
+  # --- Payment Processor 1 ---
+  payment-processor-1:
+    image: zanfranceschi/payment-processor:amd64-20250807222453
+    container_name: payment-processor-default
+    hostname: payment-processor-default
+    environment:
+      - TRANSACTION_FEE=0.05
+      - RATE_LIMIT_SECONDS=5
+      - INITIAL_TOKEN=123
+      - DB_CONNECTION_STRING=Host=/var/run/postgresql;Port=5432;Database=rinha;Username=postgres;Password=postgres;Minimum Pool Size=15;Maximum Pool Size=20;Connection Pruning Interval=3
+    ports:
+      - 8001:8080
+    volumes:
+      - postgres-socket-01:/var/run/postgresql
+    depends_on:
+      - payment-processor-db-1
+    networks:
+      - payment-processor
+      - payment-processor-db
+
+  payment-processor-db-1:
+    image: postgres:17-alpine
+    container_name: payment-processor-default-db
+    hostname: payment-processor-default-db
+    command: postgres -c checkpoint_timeout=600 -c max_wal_size=4096 -c synchronous_commit=0 -c fsync=0 -c full_page_writes=0
+    environment:
+      - POSTGRES_PASSWORD=postgres
+      - POSTGRES_USER=postgres
+      - POSTGRES_DB=rinha
+    volumes:
+      - ./init.sql:/docker-entrypoint-initdb.d/init.sql
+      - postgres-socket-01:/var/run/postgresql
+    networks:
+      - payment-processor-db
+
+  # --- Payment Processor 2 ---
+  payment-processor-2:
+    image: zanfranceschi/payment-processor:amd64-20250807222453
+    container_name: payment-processor-fallback
+    hostname: payment-processor-fallback
+    environment:
+      - TRANSACTION_FEE=0.15
+      - RATE_LIMIT_SECONDS=5
+      - INITIAL_TOKEN=123
+      - DB_CONNECTION_STRING=Host=/var/run/postgresql;Port=5432;Database=rinha;Username=postgres;Password=postgres;Minimum Pool Size=15;Maximum Pool Size=20;Connection Pruning Interval=3
+    ports:
+      - 8002:8080
+    volumes:
+      - postgres-socket-02:/var/run/postgresql
+    depends_on:
+      - payment-processor-db-2
+    networks:
+      - payment-processor
+      - payment-processor-db
+
+  payment-processor-db-2:
+    image: postgres:17-alpine
+    container_name: payment-processor-fallback-db
+    hostname: payment-processor-fallback-db
+    command: postgres -c checkpoint_timeout=600 -c max_wal_size=4096 -c synchronous_commit=0 -c fsync=0 -c full_page_writes=0
+    environment:
+      - POSTGRES_PASSWORD=postgres
+      - POSTGRES_USER=postgres
+      - POSTGRES_DB=rinha
+    volumes:
+      - ./init.sql:/docker-entrypoint-initdb.d/init.sql
+      - postgres-socket-02:/var/run/postgresql
+    networks:
+      - payment-processor-db
+
+# --- Networks ---
+networks:
+  kafka-net:
+    driver: bridge
+  payment-processor:
+    driver: bridge
+  payment-processor-db:
+    driver: bridge
+  quarkus-net:
+    driver: bridge
+
+# --- Volumes ---
+volumes:
+  postgres-socket-01:
+  postgres-socket-02:
+  quarkus-db-data:
+
