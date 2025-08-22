@@ -1,4 +1,10 @@
 # rinha-backend
+Architecture design
+Payment service
+<img width="872" height="421" alt="image" src="https://github.com/user-attachments/assets/2578ca54-3a80-4c20-9ad1-927822f9ecf1" />
+
+Payment processor service
+<img width="1396" height="435" alt="image" src="https://github.com/user-attachments/assets/4edffce8-64f5-4724-9be3-750763b4c114" />
 
 This project uses Quarkus, the Supersonic Subatomic Java Framework.
 
