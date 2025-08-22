@@ -1,10 +1,6 @@
 # rinha-backend
 Architecture design
-Payment service
-<img width="872" height="421" alt="image" src="https://github.com/user-attachments/assets/2578ca54-3a80-4c20-9ad1-927822f9ecf1" />
 
-Payment processor service
-<img width="1396" height="435" alt="image" src="https://github.com/user-attachments/assets/4edffce8-64f5-4724-9be3-750763b4c114" />
 
 # Payments Service
 
@@ -24,11 +20,14 @@ The service exposes REST endpoints to create and query payments. Payments are fi
 
 1. **API Request → PaymentController → PaymentsService**
 
+<img width="872" height="421" alt="image" src="https://github.com/user-attachments/assets/2578ca54-3a80-4c20-9ad1-927822f9ecf1" />
+
    * Receives a request to create a payment.
    * Publishes the payment data to Kafka (`payments-out`).
    * Returns `"OK"` immediately.
 
-2. **Message Processing → PaymentProcessorService**
+3. **Message Processing → PaymentProcessorService**
+<img width="1396" height="435" alt="image" src="https://github.com/user-attachments/assets/4edffce8-64f5-4724-9be3-750763b4c114" />
 
    * Listens to Kafka (`payments-in`).
    * Converts the message payload into a `CreateExternalPaymentDto`.
@@ -36,7 +35,7 @@ The service exposes REST endpoints to create and query payments. Payments are fi
    * If retries fail, it attempts the **Fallback Processor**.
    * If all processors fail, the payment is stored with a **FAILED** status.
 
-3. **Database (PostgreSQL/MongoDB)**
+4. **Database (PostgreSQL/MongoDB)**
 
    * All processed payments are stored with details: correlationId, amount, processor type, status, and timestamp.
 
